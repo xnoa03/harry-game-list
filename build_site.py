@@ -58,6 +58,7 @@ def fetch_trailer(app_id):
 def fill_trailers(limit):
     df = pd.read_csv(CSV_FILE, encoding='utf-8-sig')
     if '트레일러' not in df.columns: df['트레일러'] = ''
+    df['트레일러'] = df['트레일러'].astype(object)  # 전부 비어 있으면 float로 읽혀 문자열 대입이 실패함
     todo = [i for i, row in df.iterrows() if pd.isna(row['트레일러']) or row['트레일러'] == '']
     done = 0
     for i in todo[:limit]:
