@@ -158,6 +158,7 @@ def process_single_target(item, old_games_map):
     pc_link = f"https://cafe.naver.com/ArticleRead.nhn?clubid={CLUB_ID}&articleid={app_id}"
     final_category = item.get('category', '미분류')
     cached_img, cached_discount, cached_meta = '-', 0, '-' 
+    cached_trailer = ''
     
     if pc_link in old_games_map:
         old = old_games_map[pc_link]
@@ -165,8 +166,9 @@ def process_single_target(item, old_games_map):
         cached_img = old.get('스팀이미지', '-')
         cached_discount = old.get('스팀할인', 0)
         cached_meta = old.get('유저평가', '-') 
+        cached_trailer = old.get('트레일러', '')
     
-    info = {"카테고리": final_category, "글제목": item.get('title', ''), "게임이름": "-", "출시일": "-", "가격": "-", "링크": "-", "한글화": "-", "플레이타임": "-", "게시글링크": pc_link, "스팀이미지": cached_img, "스팀할인": cached_discount, "유저평가": cached_meta}
+    info = {"카테고리": final_category, "글제목": item.get('title', ''), "게임이름": "-", "출시일": "-", "가격": "-", "링크": "-", "한글화": "-", "플레이타임": "-", "게시글링크": pc_link, "스팀이미지": cached_img, "스팀할인": cached_discount, "유저평가": cached_meta, "트레일러": cached_trailer}
     headers = {"User-Agent": "Mozilla/5.0"}
     content = ""
     

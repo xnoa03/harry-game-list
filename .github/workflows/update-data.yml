@@ -8,6 +8,9 @@ on:
       pages:
         description: '탐색할 페이지 수 (1페이지 = 글 50개)'
         default: '3'
+      trailers:
+        description: '트레일러를 수집할 최대 게임 수'
+        default: '150'
 
 permissions:
   contents: write
@@ -29,8 +32,8 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: 크롤링 + games.json 생성
-        run: python build_site.py --crawl ${{ github.event.inputs.pages || '3' }}
+      - name: 크롤링 + 트레일러 수집 + games.json 생성
+        run: python build_site.py --crawl ${{ github.event.inputs.pages || '3' }} --trailers ${{ github.event.inputs.trailers || '150' }}
 
       - name: 변경 사항 커밋
         run: |
