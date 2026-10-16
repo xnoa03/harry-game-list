@@ -60,16 +60,22 @@ def fill_trailers(limit):
     if '트레일러' not in df.columns: df['트레일러'] = ''
     df['트레일러'] = df['트레일러'].astype(object)  # 전부 비어 있으면 float로 읽혀 문자열 대입이 실패함
     todo = [i for i, row in df.iterrows() if pd.isna(row['트레일러']) or row['트레일러'] == '']
-    done = 0
+    done, waits = 0, 0
     for i in todo[:limit]:
         app_id = steam_app_id(df.loc[i])
-        try: trailer = fetch_trailer(app_id) if app_id else '-'
-        except Exception as e:
-            print(f"트레일러 에러 ({app_id}): {e}")
-            continue
+        while True:
+            try: trailer = fetch_trailer(app_id) if app_id else '-'
+            except Exception as e:
+                print(f"트레일러 에러 ({app_id}): {e}")
+                trailer = ''
+            if trailer is not None or waits >= 6: break
+            waits += 1
+            print(f"⏸ Steam 요청 제한 - 60초 대기 ({waits}/6)")
+            time.sleep(60)
         if trailer is None:
-            print("⏸ Steam 요청 제한에 걸려 다음 실행에서 이어서 수집합니다")
+            print("⏹ 요청 제한이 계속되어 다음 실행에서 이어서 수집합니다")
             break
+        if not trailer: continue
         df.at[i, '트레일러'] = trailer
         done += 1
         time.sleep(0.4)
