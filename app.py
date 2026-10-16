@@ -13,13 +13,6 @@ import requests
 import concurrent.futures 
 from concurrent.futures import ThreadPoolExecutor 
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from subprocess import CREATE_NO_WINDOW 
 
 def get_data_path(filename):
     if getattr(sys, 'frozen', False):
@@ -256,47 +249,29 @@ def generate_crawl_stream(max_pages):
             yield f"data: {json.dumps({'progress': 8, 'msg': f'💾 기존 데이터 {len(old_games)}개 로드 완료'})}\n\n"
     except Exception as e: pass
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--log-level=3")
-    chrome_options.page_load_strategy = 'eager'
-    service = Service(); service.creation_flags = CREATE_NO_WINDOW
-    
-    driver = None
     crawl_targets = []
-    
+    headers = {"User-Agent": "Mozilla/5.0"}
+
     try:
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        
         for page in range(1, max_pages + 1):
             yield f"data: {json.dumps({'progress': 10 + (page/max_pages*5), 'msg': f'📋 {page}페이지 탐색...'})}\n\n"
-            driver.get(f"https://cafe.naver.com/ArticleList.nhn?search.clubid={CLUB_ID}&search.menuid=44&search.page={page}")
-            time.sleep(0.1)
-            try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "a.article")))
-            except: pass
-            for post in driver.find_elements(By.CSS_SELECTOR, "a.article"):
-                try:
-                    full_title = post.text.strip().replace('\n', ' ')
-                    category = full_title[1:full_title.find("]")] if full_title.startswith("[") else "미분류"
-                    if category.replace(" ", "") in ["게임", "공겜", "할게임", "일단킵", "협동", "한게임"] and category != "공지":
-                        match = re.search(r'(?:articleid=|articles/)(\d+)', post.get_attribute('href'))
-                        if match and not any(d.get('id') == match.group(1) for d in crawl_targets):
-                            crawl_targets.append({"id": match.group(1), "category": category, "title": full_title})
-                except Exception as e: continue
-                
+            list_url = f"https://apis.naver.com/cafe-web/cafe2/ArticleListV2dot1.json?search.clubid={CLUB_ID}&search.queryType=lastArticle&search.menuid=44&search.page={page}&search.perPage=50"
+            try:
+                result = requests.get(list_url, headers=headers, timeout=10).json()['message']['result']
+            except Exception as e:
+                print(f"카페 목록 API 에러: {e}")
+                break
+            for post in result.get('articleList', []):
+                category = post.get('headName') or "미분류"
+                if category.replace(" ", "") in ["게임", "공겜", "할게임", "일단킵", "협동", "한게임"]:
+                    article_id = str(post.get('articleId'))
+                    if not any(d.get('id') == article_id for d in crawl_targets):
+                        crawl_targets.append({"id": article_id, "category": category, "title": f"[{category}]{post.get('subject', '')}"})
+            if not result.get('hasNext'): break
     except GeneratorExit:
         print("사용자가 웹페이지 창을 닫아 크롤링이 중단되었습니다.")
         return
-    except Exception as e:
-        yield f"data: {json.dumps({'progress': 100, 'msg': '🚨 크롬 브라우저를 실행할 수 없습니다 (크롬 설치 확인)', 'done': True})}\n\n"
-        return
-    finally:
-        if driver:
-            try: driver.quit()
-            except: pass
-    
+
     if not crawl_targets:
         yield f"data: {json.dumps({'progress': 100, 'msg': '새로운 데이터 없음', 'done': True})}\n\n"
         return
