@@ -221,9 +221,12 @@ async function askClaude(input: string): Promise<AiInfo | null> {
 type Steam = Awaited<ReturnType<typeof steamDetails>>;
 
 // game_ai 한 줄: AI 결과가 있으면 그걸, 없으면 Steam 장르/소개문, 둘 다 없으면 빈 줄(다시 시도하지 않도록 표시)
+// source: ai2 = AI 설명 + 장르(Steam 태그 우선) / tags = Steam 태그·소개문 / none = 정보 없음
+//         ai = 예전 방식(장르도 AI가 고름, 정확도가 낮아 장르만 다시 계산함)
 function aiRow(link: string, ai: AiInfo | null, steam: Steam) {
   const base = { link, updated_at: new Date().toISOString() };
-  if (ai) return { ...base, genres: ai.genres, summary: ai.summary, source: 'ai' };
+  // 장르는 Steam 태그가 AI보다 정확해서 태그가 있으면 태그로, 없을 때(비 Steam 게임)만 AI 장르 사용
+  if (ai) return { ...base, genres: steam?.tags.length ? tagGenres(steam.tags) : ai.genres, summary: ai.summary, source: 'ai2' };
   if (steam) {
     return { ...base, genres: tagGenres(steam.tags), summary: steam.desc, source: 'tags' };
   }
@@ -274,8 +277,13 @@ async function processNewPost(p: { id: string; category: string; subject: string
 }
 
 // --- 기존 게임 AI 채우기 ---
-async function backfillOne(g: Record<string, string>) {
+async function backfillOne(g: Record<string, string>, prev?: { source: string; genres: string[]; summary: string }) {
   const appId = steamId(g['링크']) ?? steamId(g['스팀이미지']);
+  // 예전 방식 AI 결과: 설명은 그대로 두고 장르만 Steam 태그로 다시 계산 (AI 재호출 없음)
+  if (prev?.source === 'ai' && prev.summary) {
+    const tags = appId ? await steamTags(appId) : [];
+    return { link: g['게시글링크'], genres: tags.length ? tagGenres(tags) : prev.genres, summary: prev.summary, source: 'ai2', updated_at: new Date().toISOString() };
+  }
   const steam = appId ? await steamDetails(appId, false) : null;
   let body = '';
   if (!steam && claude) {
@@ -303,14 +311,15 @@ Deno.serve(async (req) => {
       cafeList(),
       fetch(GAMES_JSON, { cache: 'no-store' }).then(r => r.json()) as Promise<Record<string, string>[]>,
       sbAll('live_games?select=link'),
-      sbAll('game_ai?select=link,source'),
+      sbAll('game_ai?select=link,source,genres,summary'),
     ]);
     const knownLinks = new Set(known.map(g => g['게시글링크']));
     const cachedLinks = new Set((cached as any[]).map(r => r.link));
     const rowLinks = new Set((aiDone as any[]).map(r => r.link));
     // 키가 있으면 AI로 쓴 것만 완료로 봄 (Steam으로 임시로 채운 건 AI로 다시 작성)
     // (키가 없으면 태그 기반·정보 없음도 완료. 예전 방식(steam, 공식 장르)으로 채운 건 태그로 다시 채움)
-    const done = (src: string) => src === 'ai' || (!claude && (src === 'tags' || src === 'none'));
+    const done = (src: string) => src === 'ai2' || (!claude && (src === 'tags' || src === 'none'));
+    const prevRows = new Map((aiDone as any[]).map(r => [r.link, r]));
     const aiLinks = new Set((aiDone as any[]).filter(r => done(r.source)).map(r => r.link));
 
     // games.json에 이미 반영된 임시 글은 정리
@@ -329,7 +338,7 @@ Deno.serve(async (req) => {
     // (AI가 계속 실패해도 같은 게임만 반복하지 않고 나머지가 Steam 정보로라도 채워지게)
     const todo = known.filter(g => !aiLinks.has(g['게시글링크']))
       .sort((a, b) => Number(rowLinks.has(a['게시글링크'])) - Number(rowLinks.has(b['게시글링크'])));
-    const filled = await inBatches(todo.slice(0, backfillLimit), 10, backfillOne);
+    const filled = await inBatches(todo.slice(0, backfillLimit), 10, g => backfillOne(g, prevRows.get(g['게시글링크'])));
     await upsert('game_ai', [...newInfo, ...filled]);
 
     // 아직 games.json에 반영되지 않은 글(이번에 찾은 것 + 예전에 찾아둔 것)을 함께 반환
