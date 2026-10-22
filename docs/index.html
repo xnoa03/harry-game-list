@@ -47,7 +47,10 @@
         .trailer-preview.show { opacity: 1; transform: scale(1); }
         .trailer-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
         .trailer-preview .trailer-label { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.65); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
-        #updateStatus { font-size: 0.85rem; min-height: 1.2em; }
+        #liveStatus { font-size: 0.85rem; min-height: 1.2em; }
+        .genre-badge { display: inline-block; background: #2c2c2c; color: #ff9b9b; font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 10px; margin: 3px 3px 0 0; }
+        .game-summary { font-size: 0.78rem; color: #666; font-weight: 400; margin-top: 3px; line-height: 1.35; }
+        .new-badge { background: #ff4d4d; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 5px; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -60,15 +63,18 @@
         </div>
         <div class="card mb-4 p-4">
             <div class="row g-3 align-items-end mb-3">
-                <div class="col-md-8">
+                <div class="col-md-6">
                     <label class="form-label fw-bold">🔍 단어 검색</label>
-                    <input type="text" id="searchInput" class="form-control bg-light border-secondary" placeholder="제목/게임명 검색..." oninput="applyFilters()">
+                    <input type="text" id="searchInput" class="form-control bg-light border-secondary" placeholder="제목/게임명/설명 검색..." oninput="applyFilters()">
                 </div>
-                <div class="col-md-4 text-end">
-                    <button id="updateBtn" onclick="triggerUpdate()" class="btn btn-primary fw-bold">🚀 데이터 갱신</button>
-                    <button onclick="randomPick()" class="btn btn-outline-warning fw-bold ms-2">🐚 소라고동</button>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">🎮 장르</label>
+                    <select id="genreSelect" class="form-select bg-light border-secondary" onchange="applyFilters()"><option value="">전체</option></select>
                 </div>
-                <div id="updateStatus" class="col-12 text-end fw-bold"></div>
+                <div class="col-md-3 text-end">
+                    <button onclick="randomPick()" class="btn btn-outline-warning fw-bold">🐚 소라고동</button>
+                </div>
+                <div id="liveStatus" class="col-12 text-end fw-bold"></div>
             </div>
             <hr class="border-secondary my-3">
             <div class="row g-3">
@@ -119,6 +125,8 @@
     <script src="config.js"></script>
     <script>
         const CATEGORIES = ['게임', '공겜', '할 게임', '일단 킵', '협동', '한 게임'];
+        const GENRES = ['액션', '어드벤처', 'RPG', '로그라이크', '전략', '시뮬레이션', '퍼즐', '공포', '생존', '슈팅',
+            '플랫포머', '레이싱', '스포츠', '리듬', '격투', '샌드박스', '파티', '추리', '비주얼노벨', '카드', '방치형', '오픈월드', '힐링', '턴제'];
         const LOCAL_KEY = 'harry_categories';
         if (window.SUPABASE_URL) window.SUPABASE_URL = window.SUPABASE_URL.replace(/\/+$/, '').replace(/\/rest\/v1$/, '');
         const useSupabase = !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY);
@@ -181,8 +189,28 @@
             } catch { throw new Error('브라우저 저장소를 사용할 수 없습니다'); }
         }
 
+        // --- AI 장르/설명 (Supabase game_ai 테이블) ---
+        async function loadAiInfo() {
+            if (!useSupabase) return {};
+            const res = await fetch(`${window.SUPABASE_URL}/rest/v1/game_ai?select=link,genres,summary`, { headers: sbHeaders() });
+            if (!res.ok) return {};
+            return Object.fromEntries((await res.json()).map(r => [r.link, r]));
+        }
+
+        // app.py의 parse_time과 동일 (실시간으로 추가된 글용)
+        function parseTime(text) {
+            text = String(text ?? '').toLowerCase();
+            const nums = text.match(/[-+]?\d*\.\d+|\d+/g);
+            if (!nums) return 0;
+            const avg = nums.map(Number).reduce((a, b) => a + b, 0) / nums.length;
+            return (text.includes('분') || text.includes('min')) && !text.includes('시간') ? avg / 60 : avg;
+        }
+        const articleId = g => Number(String(g['게시글링크']).match(/articleid=(\d+)/)?.[1] || 0);
+
         // --- 렌더링 ---
         function renderRow(g, category) {
+            const ai = aiInfo[g['게시글링크']] || {};
+            const genres = ai.genres || [];
             const img = safeUrl(g['스팀이미지']);
             const link = safeUrl(g['링크']);
             const isSteam = link.includes('steampowered.com');
@@ -192,13 +220,13 @@
             const discount = g['스팀할인'] > 0 ? `<span class="discount-badge">-${esc(g['스팀할인'])}%</span>` : '';
             const trailer = safeUrl(g['트레일러']);
             const options = CATEGORIES.map(c => `<option value="${c}"${c === category ? ' selected' : ''}>${c}</option>`).join('');
-            return `<tr class="game-row" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}">
+            return `<tr class="game-row" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}" data-genres="${esc(genres.join(','))}">
                 <td><div class="steam-img-container${trailer ? ' has-trailer' : ''}"${trailer ? ` data-trailer="${esc(trailer)}" data-poster="${esc(img)}"` : ''}>${img
                     ? `<img src="${esc(img)}" alt="포스터" class="steam-thumbnail" loading="lazy">`
                     : '<img src="logo.ico" alt="N/A" class="steam-thumbnail" style="opacity: 0.2; width: 40px;">'}</div></td>
                 <td><select class="form-select form-select-custom" data-link="${esc(g['게시글링크'])}" onchange="changeCategory(this)">${options}</select></td>
-                <td><a href="${esc(safeUrl(g['게시글링크']))}" target="_blank" rel="noopener noreferrer" class="game-title">${esc(g['글제목'])}</a></td>
-                <td class="fw-bold game-name">${esc(g['게임이름'])}</td>
+                <td>${g._live ? '<span class="new-badge">NEW</span>' : ''}<a href="${esc(safeUrl(g['게시글링크']))}" target="_blank" rel="noopener noreferrer" class="game-title">${esc(g['글제목'])}</a></td>
+                <td class="fw-bold game-info"><span class="game-name">${esc(g['게임이름'])}</span>${ai.summary ? `<div class="game-summary">${esc(ai.summary)}</div>` : ''}${genres.map(x => `<span class="genre-badge">${esc(x)}</span>`).join('')}</td>
                 <td class="text-center">${review}</td>
                 <td class="fw-bold">${esc(g['가격'])}${discount}</td>
                 <td>${esc(g['한글화'])}</td>
@@ -213,14 +241,24 @@
             el.innerText = msg;
         }
 
-        let loadedGamesText = '';
+        let games = [], overrides = {}, aiInfo = {};
+
+        function renderAll() {
+            document.getElementById('gameTable').innerHTML = games
+                .map(g => renderRow(g, normalizeCategory(overrides[g['게시글링크']] || g['카테고리'])))
+                .join('');
+            document.querySelectorAll('.form-select-custom').forEach(updateSelectColor);
+            const used = new Set(Object.values(aiInfo).flatMap(a => a.genres || []));
+            const sel = document.getElementById('genreSelect');
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">전체</option>' + GENRES.filter(x => used.has(x)).map(x => `<option${x === cur ? ' selected' : ''}>${x}</option>`).join('');
+            applyFilters();
+        }
 
         async function init() {
-            let games;
             try {
                 const res = await fetch('games.json', { cache: 'no-cache' });
-                loadedGamesText = await res.text();
-                games = JSON.parse(loadedGamesText);
+                games = await res.json();
             } catch (e) {
                 const err = document.getElementById('errorMsg');
                 err.innerText = '🚨 게임 목록(games.json)을 불러오지 못했습니다.';
@@ -228,19 +266,15 @@
                 document.getElementById('gameTable').innerHTML = '';
                 return;
             }
-            let overrides = {};
             try {
-                overrides = await loadOverrides();
+                [overrides, aiInfo] = await Promise.all([loadOverrides(), loadAiInfo().catch(() => ({}))]);
                 setStatus(useSupabase ? '☁️ 카테고리 변경이 모두에게 공유됩니다' : '💾 카테고리 변경은 이 브라우저에만 저장됩니다');
             } catch (e) {
                 console.error(e);
                 setStatus('⚠️ 공유 카테고리를 불러오지 못했습니다 (기본값 표시 중)', 'text-danger fw-bold');
             }
-            document.getElementById('gameTable').innerHTML = games
-                .map(g => renderRow(g, normalizeCategory(overrides[g['게시글링크']] || g['카테고리'])))
-                .join('');
-            document.querySelectorAll('.form-select-custom').forEach(updateSelectColor);
-            applyFilters();
+            renderAll();
+            fetchLive();
         }
 
         function updateSelectColor(selectElement) {
@@ -256,12 +290,14 @@
             const timeLimit = parseFloat(document.getElementById('timeRange').value);
             const checkedTags = Array.from(document.querySelectorAll('#tagFilters input:checked')).map(cb => cb.value);
             const searchText = document.getElementById('searchInput').value.toLowerCase().trim();
+            const genre = document.getElementById('genreSelect').value;
             document.querySelectorAll('.game-row').forEach(row => {
                 let show = checkedTags.includes(row.getAttribute('data-tag'));
                 if (parseFloat(row.getAttribute('data-time')) > timeLimit) show = false;
+                if (genre && !row.dataset.genres.split(',').includes(genre)) show = false;
                 if (show && searchText) {
                     const title = row.querySelector('.game-title').innerText.toLowerCase();
-                    const gName = row.querySelector('.game-name').innerText.toLowerCase();
+                    const gName = row.querySelector('.game-info').innerText.toLowerCase();
                     if (!title.includes(searchText) && !gName.includes(searchText)) show = false;
                 }
                 row.style.display = show ? '' : 'none';
@@ -295,7 +331,7 @@
             const gameName = row.querySelector('.game-name').innerText;
             const link = row.querySelector('.store-link a')?.href;
             document.getElementById('modalTitle').innerText = gameName !== '-' ? gameName : title;
-            document.getElementById('modalInfo').innerText = '이 게임 어때요?';
+            document.getElementById('modalInfo').innerText = row.querySelector('.game-summary')?.innerText || '이 게임 어때요?';
             document.getElementById('modalLinks').innerHTML = link ? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">상점 가기</a>` : '';
             new bootstrap.Modal(document.getElementById('conchModal')).show();
         }
@@ -354,73 +390,37 @@
             window.addEventListener('scroll', hideTrailer, { passive: true });
         }
 
-        // --- 데이터 갱신 버튼 (Supabase Edge Function -> GitHub Actions) ---
-        const REPO_API = 'https://api.github.com/repos/xnoa03/harry-game-list';
-        const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-        function setUpdateStatus(msg, cls) {
-            const el = document.getElementById('updateStatus');
+        // --- 접속(F5)할 때마다 카페 최신 글 + AI 정보 가져오기 (Supabase Edge Function) ---
+        function setLiveStatus(msg, cls) {
+            const el = document.getElementById('liveStatus');
             el.className = `col-12 text-end fw-bold ${cls || ''}`;
             el.innerText = msg;
         }
 
-        async function latestRun() {
-            const res = await fetch(`${REPO_API}/actions/workflows/update-data.yml/runs?per_page=1`, { cache: 'no-store' });
-            return (await res.json()).workflow_runs?.[0];
-        }
-
-        async function triggerUpdate() {
-            if (!useSupabase) return alert('Supabase 설정(config.js)이 필요합니다.');
-            const btn = document.getElementById('updateBtn');
-            btn.disabled = true;
-            setUpdateStatus('⏳ 갱신 요청 중...');
+        async function fetchLive() {
+            if (!useSupabase) return;
+            setLiveStatus('🔄 카페 최신 글 확인 중...');
             try {
-                const res = await fetch(`${window.SUPABASE_URL}/functions/v1/trigger-update`, { method: 'POST', headers: sbHeaders() });
+                const res = await fetch(`${window.SUPABASE_URL}/functions/v1/live-games`, {
+                    method: 'POST', headers: sbHeaders({ 'Content-Type': 'application/json' }), body: '{}'
+                });
                 const data = await res.json().catch(() => ({ status: 'error', msg: `HTTP ${res.status}` }));
-                if (data.status === 'cooldown') {
-                    setUpdateStatus(`✅ 방금 갱신됐어요. ${data.wait}분 뒤에 다시 시도해 주세요.`);
-                    btn.disabled = false;
-                    return;
+                if (data.status !== 'ok') throw new Error(data.msg || `HTTP ${res.status}`);
+                const known = new Set(games.map(g => g['게시글링크']));
+                const fresh = data.games.filter(g => !known.has(g['게시글링크']))
+                    .map(g => ({ ...g, time_num: parseTime(g['플레이타임']), _live: true }));
+                if (fresh.length || data.ai_filled) {
+                    aiInfo = await loadAiInfo().catch(() => aiInfo);
+                    games = [...fresh, ...games].sort((a, b) => articleId(b) - articleId(a));
+                    renderAll();
                 }
-                if (data.status !== 'started' && data.status !== 'running') throw new Error(data.msg || `HTTP ${res.status}`);
-                setUpdateStatus(data.status === 'running' ? '🔄 이미 갱신 중이에요. 끝나면 자동으로 새로고침돼요.' : '🚀 갱신 시작! 2~3분 정도 걸려요.');
-                await waitForUpdate();
+                const parts = [fresh.length ? `✨ 카페 새 글 ${fresh.length}개 추가됨` : '✅ 카페 최신 글까지 반영됨'];
+                if (data.ai_remaining > 0) parts.push(`🤖 AI 설명 남은 게임 ${data.ai_remaining}개 (새로고침할 때마다 이어서 채워져요)`);
+                setLiveStatus(parts.join(' · '));
             } catch (err) {
                 console.error(err);
-                setUpdateStatus(`🚨 갱신 실패: ${err.message}`, 'text-danger');
+                setLiveStatus('⚠️ 카페 최신 글을 불러오지 못했어요 (저장된 목록 표시 중)', 'text-danger');
             }
-            btn.disabled = false;
-        }
-
-        async function waitForUpdate() {
-            await sleep(5000);  // 실행이 목록에 나타날 때까지 잠깐 대기
-            let run;
-            for (let i = 0; i < 60; i++) {
-                run = await latestRun();
-                if (run && run.status === 'completed') break;
-                setUpdateStatus(`🔄 카페 글 수집 중... (${(i + 1) * 10}초)`);
-                await sleep(10000);
-            }
-            if (!run || run.status !== 'completed') throw new Error('시간 초과');
-            if (run.conclusion !== 'success') throw new Error(`작업 실패 (${run.conclusion})`);
-
-            // 이번 실행이 games.json을 바꿨는지 확인
-            const commits = await (await fetch(`${REPO_API}/commits?path=docs/games.json&per_page=1`, { cache: 'no-store' })).json();
-            const changed = commits[0] && Date.parse(commits[0].commit.committer.date) >= Date.parse(run.created_at);
-            if (!changed) return setUpdateStatus('✅ 새로 올라온 글이 없어요. 이미 최신 상태예요.');
-
-            // GitHub Pages 반영 대기 후 새로고침
-            for (let i = 0; i < 18; i++) {
-                setUpdateStatus('📦 사이트에 반영 중...');
-                const text = await (await fetch(`games.json?t=${Date.now()}`, { cache: 'no-store' })).text();
-                if (text !== loadedGamesText) {
-                    setUpdateStatus('✨ 갱신 완료! 새로고침합니다.');
-                    await sleep(800);
-                    return location.reload();
-                }
-                await sleep(10000);
-            }
-            setUpdateStatus('✅ 갱신은 끝났어요. 잠시 뒤 새로고침하면 반영돼요.');
         }
 
         init();
