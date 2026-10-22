@@ -37,6 +37,15 @@ const sb = (path: string, init: RequestInit = {}) =>
     ...init,
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', ...init.headers },
   });
+// Supabase는 한 번에 최대 1000행만 주므로 나눠서 끝까지 읽음
+async function sbAll(path: string) {
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const page = await (await sb(path, { headers: { Range: `${from}-${from + 999}` } })).json();
+    rows.push(...page);
+    if (page.length < 1000) return rows;
+  }
+}
 const upsert = (table: string, rows: unknown[]) =>
   rows.length ? sb(table, { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify(rows) }) : null;
 
@@ -116,6 +125,7 @@ async function steamDetails(appId: string, withReview = true) {
 const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
 const claude = apiKey ? new Anthropic({ apiKey }) : null;
 let lastAiError = '';  // 마지막 Claude 오류 (응답에 같이 돌려줘서 원인 확인용)
+let aiBlocked = false;  // 크레딧 부족/키 오류처럼 재시도해도 소용없는 오류면 이번 호출에선 AI를 건너뜀
 
 const AI_SCHEMA = {
   type: 'object',
@@ -140,7 +150,7 @@ const SYSTEM = `너는 스트리머 시청자들이 추천한 게임 목록을 �
 type AiInfo = { game_name: string; release_date: string; price: string; korean: string; playtime: string; genres: string[]; summary: string };
 
 async function askClaude(input: string): Promise<AiInfo | null> {
-  if (!claude) return null;
+  if (!claude || aiBlocked) return null;
   try {
     const res: any = await claude.messages.create({
       model: MODEL,
@@ -155,6 +165,8 @@ async function askClaude(input: string): Promise<AiInfo | null> {
   } catch (e) {
     console.error('Claude 에러', e);
     lastAiError = e instanceof Error ? e.message : String(e);
+    if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError ||
+        (e instanceof Anthropic.BadRequestError && /credit balance/i.test(lastAiError))) aiBlocked = true;
     return null;
   }
 }
@@ -244,11 +256,12 @@ Deno.serve(async (req) => {
     const [posts, known, cached, aiDone] = await Promise.all([
       cafeList(),
       fetch(GAMES_JSON, { cache: 'no-store' }).then(r => r.json()) as Promise<Record<string, string>[]>,
-      sb('live_games?select=link').then(r => r.json()),
-      sb('game_ai?select=link,source').then(r => r.json()),
+      sbAll('live_games?select=link'),
+      sbAll('game_ai?select=link,source'),
     ]);
     const knownLinks = new Set(known.map(g => g['게시글링크']));
     const cachedLinks = new Set((cached as any[]).map(r => r.link));
+    const rowLinks = new Set((aiDone as any[]).map(r => r.link));
     // 키가 있으면 AI로 쓴 것만 완료로 봄 (Steam으로 임시로 채운 건 AI로 다시 작성)
     const aiLinks = new Set((aiDone as any[]).filter(r => !claude || r.source === 'ai').map(r => r.link));
 
@@ -264,7 +277,10 @@ Deno.serve(async (req) => {
     newInfo.forEach(r => aiLinks.add(r.link));
 
     // 2) 장르/설명 채우기 (최신 글부터)
-    const todo = known.filter(g => !aiLinks.has(g['게시글링크']));
+    // 아직 아무 정보도 없는 게임 먼저, 그다음 Steam으로 채워둔 게임을 AI로 다시 작성
+    // (AI가 계속 실패해도 같은 게임만 반복하지 않고 나머지가 Steam 정보로라도 채워지게)
+    const todo = known.filter(g => !aiLinks.has(g['게시글링크']))
+      .sort((a, b) => Number(rowLinks.has(a['게시글링크'])) - Number(rowLinks.has(b['게시글링크'])));
     const filled = await inBatches(todo.slice(0, backfillLimit), 10, backfillOne);
     await upsert('game_ai', [...newInfo, ...filled]);
 

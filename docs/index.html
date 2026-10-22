@@ -192,9 +192,16 @@
         // --- AI 장르/설명 (Supabase game_ai 테이블) ---
         async function loadAiInfo() {
             if (!useSupabase) return {};
-            const res = await fetch(`${window.SUPABASE_URL}/rest/v1/game_ai?select=link,genres,summary`, { headers: sbHeaders() });
-            if (!res.ok) return {};
-            return Object.fromEntries((await res.json()).map(r => [r.link, r]));
+            // Supabase는 한 번에 최대 1000행만 주므로 나눠서 끝까지 읽음
+            const rows = [];
+            for (let from = 0; ; from += 1000) {
+                const res = await fetch(`${window.SUPABASE_URL}/rest/v1/game_ai?select=link,genres,summary`, { headers: sbHeaders({ Range: `${from}-${from + 999}` }) });
+                if (!res.ok) break;
+                const page = await res.json();
+                rows.push(...page);
+                if (page.length < 1000) break;
+            }
+            return Object.fromEntries(rows.map(r => [r.link, r]));
         }
 
         // app.py의 parse_time과 동일 (실시간으로 추가된 글용)
