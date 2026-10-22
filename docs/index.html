@@ -58,6 +58,11 @@
         .trailer-preview .trailer-label { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.65); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
         #liveStatus { font-size: 0.85rem; min-height: 1.2em; }
         .genre-badge { display: inline-block; background: #2c2c2c; color: #fff; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin: 4px 4px 0 0; }
+        .gp-cell { text-align: center; min-width: 96px; }
+        .gp-mark { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
+        .gp-logo { display: inline-flex; align-items: center; gap: 5px; background: #107c10; color: #fff; font-weight: 800; font-size: 0.78rem; padding: 4px 10px; border-radius: 6px; letter-spacing: 0.02em; white-space: nowrap; }
+        .gp-logo svg { width: 14px; height: 14px; fill: #fff; }
+        .gp-platform { font-size: 0.72rem; font-weight: 700; color: #107c10; }
         .gp-badge { display: inline-block; background: #107c10; color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin: 4px 4px 0 0; }
         .filter-label { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
         .filter-label .hint { font-weight: 500; font-size: 0.75rem; color: #6b3b3b; }
@@ -130,12 +135,13 @@
                         <th>게임명 · 설명</th>
                         <th>평가</th>
                         <th>가격/할인</th>
+                        <th class="text-center">게임패스</th>
                         <th>한글 · 플타</th>
                         <th>링크</th>
                     </tr>
                 </thead>
                 <tbody id="gameTable">
-                    <tr><td colspan="8" class="text-center py-5 text-muted">불러오는 중...</td></tr>
+                    <tr><td colspan="9" class="text-center py-5 text-muted">불러오는 중...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -154,6 +160,7 @@
             '생존': '🏕️', '슈팅': '🔫', '플랫포머': '🍄', '레이싱': '🏎️', '스포츠': '⚽', '리듬': '🎵', '격투': '🥊', '샌드박스': '🧱',
             '파티': '🎉', '추리': '🕵️', '비주얼노벨': '📖', '카드': '🃏', '방치형': '⏳', '오픈월드': '🗺️', '힐링': '🌿', '턴제': '⏱️'
         };
+        const XBOX_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a9.9 9.9 0 0 1 5.3 1.5c-1.8-.4-4 .9-5.3 2C10.7 4.4 8.5 3.1 6.7 3.5A9.9 9.9 0 0 1 12 2zm6.7 3c2 1.9 3.3 4.4 3.3 7.3 0 2.3-.8 4.5-2.2 6.2.6-2.6-2.4-7.6-4.7-10.4 1.4-1.6 2.7-2.9 3.6-3.1zM5.3 5c.9.2 2.2 1.5 3.6 3.1C6.6 10.9 3.6 15.9 4.2 18.5A9.9 9.9 0 0 1 2 12.3C2 9.4 3.3 6.9 5.3 5zM12 10.1c2.6 2.4 6.7 7.4 5.7 9.6A9.9 9.9 0 0 1 12 22a9.9 9.9 0 0 1-5.7-2.3c-1-2.2 3.1-7.2 5.7-9.6z"/></svg>';
         const selectedGenres = new Set();
         let gamepassOnly = false;
         const LOCAL_KEY = 'harry_categories';
@@ -268,9 +275,10 @@
                     : '<img src="logo.ico" alt="N/A" class="steam-thumbnail" style="opacity: 0.2; width: 40px;">'}</div></td>
                 <td><select class="form-select form-select-custom" data-link="${esc(g['게시글링크'])}" onchange="changeCategory(this)">${options}</select></td>
                 <td class="col-title">${g._live ? '<span class="new-badge">NEW</span>' : ''}<a href="${esc(safeUrl(g['게시글링크']))}" target="_blank" rel="noopener noreferrer" class="game-title">${esc(g['글제목'])}</a></td>
-                <td class="fw-bold game-info"><span class="game-name">${esc(g['게임이름'])}</span>${ai.summary ? `<div class="game-summary">${esc(ai.summary)}</div>` : ''}<div>${gp ? `<span class="gp-badge" title="Xbox 게임패스에 포함 (${esc(gp)})">🟩 게임패스 ${esc(gp)}</span>` : ''}${genres.map(x => `<span class="genre-badge">${GENRE_ICON[x] || ''} ${esc(x)}</span>`).join('')}</div></td>
+                <td class="fw-bold game-info"><span class="game-name">${esc(g['게임이름'])}</span>${ai.summary ? `<div class="game-summary">${esc(ai.summary)}</div>` : ''}<div>${genres.map(x => `<span class="genre-badge">${GENRE_ICON[x] || ''} ${esc(x)}</span>`).join('')}</div></td>
                 <td class="text-center">${review}</td>
                 <td class="fw-bold price-cell">${short(g['가격'])}${discount}</td>
+                <td class="gp-cell">${gp ? `<span class="gp-mark" title="Xbox 게임패스에 포함"><span class="gp-logo">${XBOX_SVG}GAME PASS</span><span class="gp-platform">${esc(gp)}</span></span>` : '<span class="text-muted">-</span>'}</td>
                 <td class="meta-cell"><div><span class="meta-label">한글</span>${short(g['한글화'], 12)}</div><div><span class="meta-label">플타</span>${short(g['플레이타임'], 14)}</div></td>
                 <td class="store-link">${link ? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm ${isSteam ? 'btn-dark' : 'btn-outline-info'} fw-bold">${isSteam ? 'Steam' : '구매'}</a>` : ''}</td>
             </tr>`;
