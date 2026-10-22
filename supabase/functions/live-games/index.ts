@@ -115,6 +115,7 @@ async function steamDetails(appId: string, withReview = true) {
 // --- Claude ---
 const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
 const claude = apiKey ? new Anthropic({ apiKey }) : null;
+let lastAiError = '';  // 마지막 Claude 오류 (응답에 같이 돌려줘서 원인 확인용)
 
 const AI_SCHEMA = {
   type: 'object',
@@ -153,6 +154,7 @@ async function askClaude(input: string): Promise<AiInfo | null> {
     return text ? JSON.parse(text) : null;
   } catch (e) {
     console.error('Claude 에러', e);
+    lastAiError = e instanceof Error ? e.message : String(e);
     return null;
   }
 }
@@ -271,6 +273,7 @@ Deno.serve(async (req) => {
     return json({
       status: 'ok',
       ai: !!claude,
+      ai_error: lastAiError || undefined,
       new_count: processed.length,
       ai_filled: newInfo.length + filled.length,
       ai_remaining: todo.length - filled.length,
