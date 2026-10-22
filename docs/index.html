@@ -93,7 +93,7 @@
             <div class="row g-3 align-items-end mb-3">
                 <div class="col-md-9">
                     <label class="form-label fw-bold">🔍 단어 검색</label>
-                    <input type="text" id="searchInput" class="form-control bg-light border-secondary" placeholder="제목/게임명/설명 검색..." oninput="applyFilters()">
+                    <input type="text" id="searchInput" class="form-control bg-light border-secondary" placeholder="제목/게임명/설명 검색..." oninput="onSearchInput()">
                 </div>
                 <div class="col-md-3 text-end">
                     <button onclick="randomPick()" class="btn btn-outline-warning fw-bold">🐚 소라고동</button>
@@ -269,7 +269,7 @@
             const trailer = safeUrl(g['트레일러']);
             const options = CATEGORIES.map(c => `<option value="${c}"${c === category ? ' selected' : ''}>${c}</option>`).join('');
             const gp = g['게임패스'] && g['게임패스'] !== '-' ? g['게임패스'] : '';
-            return `<tr class="game-row" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}" data-genres="${esc(genres.join(','))}" data-gp="${gp ? 1 : ''}">
+            return `<tr class="game-row" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}" data-genres="${esc(genres.join(','))}" data-gp="${gp ? 1 : ''}" data-search="${esc([g['글제목'], g['게임이름'], ai.summary, ...genres].join(' ').toLowerCase())}">
                 <td><div class="steam-img-container${trailer ? ' has-trailer' : ''}"${trailer ? ` data-trailer="${esc(trailer)}" data-poster="${esc(img)}"` : ''}>${img
                     ? `<img src="${esc(img)}" alt="포스터" class="steam-thumbnail" loading="lazy">`
                     : '<img src="logo.ico" alt="N/A" class="steam-thumbnail" style="opacity: 0.2; width: 40px;">'}</div></td>
@@ -347,6 +347,13 @@
         function toggleGamepass() { gamepassOnly = !gamepassOnly; renderChips(); applyFilters(); }
         function clearGenres() { selectedGenres.clear(); gamepassOnly = false; renderChips(); applyFilters(); }
 
+        // 한글 입력 중 글자마다 다시 거르지 않도록 잠깐 기다렸다가 적용
+        let searchTimer = null;
+        function onSearchInput() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(applyFilters, 120);
+        }
+
         function applyFilters() {
             const timeLimit = parseFloat(document.getElementById('timeRange').value);
             const checkedTags = Array.from(document.querySelectorAll('#tagFilters input:checked')).map(cb => cb.value);
@@ -357,12 +364,10 @@
                 if (parseFloat(row.getAttribute('data-time')) > timeLimit) show = false;
                 if (selectedGenres.size && !row.dataset.genres.split(',').some(x => selectedGenres.has(x))) show = false;
                 if (gamepassOnly && !row.dataset.gp) show = false;
-                if (show && searchText) {
-                    const title = row.querySelector('.game-title').innerText.toLowerCase();
-                    const gName = row.querySelector('.game-info').innerText.toLowerCase();
-                    if (!title.includes(searchText) && !gName.includes(searchText)) show = false;
-                }
-                row.style.display = show ? '' : 'none';
+                // 화면 텍스트(innerText)를 읽으면 행마다 레이아웃 계산이 일어나 느려서, 미리 만든 검색용 텍스트 사용
+                if (show && searchText && !row.dataset.search.includes(searchText)) show = false;
+                const display = show ? '' : 'none';
+                if (row.style.display !== display) row.style.display = display;
             });
         }
 
