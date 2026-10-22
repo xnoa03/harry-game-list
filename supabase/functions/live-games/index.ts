@@ -79,11 +79,55 @@ const REVIEW_MAP: Record<string, string> = {
   'Mostly Positive': '대체로 긍정적', 'Mixed': '복합적', 'Mostly Negative': '대체로 부정적',
   'Negative': '부정적', 'Very Negative': '매우 부정적', 'Overwhelmingly Negative': '압도적으로 부정적',
 };
-// Steam 한국어 장르 -> 사이트 장르
-const STEAM_GENRE: Record<string, string> = {
-  '액션': '액션', '어드벤처': '어드벤처', '롤플레잉': 'RPG', 'RPG': 'RPG', '시뮬레이션': '시뮬레이션',
-  '전략': '전략', '스포츠': '스포츠', '레이싱': '레이싱',
+// Steam 사용자 태그(영문) -> 사이트 장르. 공식 장르(액션/어드벤처/인디)보다 훨씬 구체적임
+const TAG_GENRE: Record<string, string> = {
+  'Action': '액션', 'Hack and Slash': '액션', 'Souls-like': '액션', 'Character Action Game': '액션',
+  'Adventure': '어드벤처', 'Action-Adventure': '어드벤처', 'Point & Click': '어드벤처', 'Walking Simulator': '어드벤처',
+  'RPG': 'RPG', 'Action RPG': 'RPG', 'JRPG': 'RPG', 'CRPG': 'RPG', 'Party-Based RPG': 'RPG', 'Dungeon Crawler': 'RPG',
+  'Roguelike': '로그라이크', 'Roguelite': '로그라이크', 'Rogue-like': '로그라이크', 'Rogue-lite': '로그라이크',
+  'Action Roguelike': '로그라이크', 'Roguelike Deckbuilder': '로그라이크', 'Roguevania': '로그라이크',
+  'Strategy': '전략', 'RTS': '전략', 'Grand Strategy': '전략', 'Tower Defense': '전략', '4X': '전략', 'Real Time Tactics': '전략', 'Tactical': '전략',
+  'Simulation': '시뮬레이션', 'Management': '시뮬레이션', 'Building': '시뮬레이션', 'Life Sim': '시뮬레이션', 'Farming Sim': '시뮬레이션',
+  'Automation': '시뮬레이션', 'Colony Sim': '시뮬레이션', 'City Builder': '시뮬레이션', 'Base Building': '시뮬레이션', 'Job Simulator': '시뮬레이션',
+  'Puzzle': '퍼즐', 'Puzzle Platformer': '퍼즐', 'Logic': '퍼즐',
+  'Horror': '공포', 'Psychological Horror': '공포', 'Survival Horror': '공포', 'Supernatural': '공포', 'Thriller': '공포', 'Demons': '공포', 'Gore': '공포', 'Zombies': '공포', 'Cosmic Horror': '공포',
+  'Survival': '생존', 'Open World Survival Craft': '생존', 'Crafting': '생존',
+  'Shooter': '슈팅', 'FPS': '슈팅', 'Third-Person Shooter': '슈팅', 'Bullet Hell': '슈팅', "Shoot 'Em Up": '슈팅', 'Looter Shooter': '슈팅', 'Hero Shooter': '슈팅', 'Extraction Shooter': '슈팅',
+  'Platformer': '플랫포머', '2D Platformer': '플랫포머', '3D Platformer': '플랫포머', 'Precision Platformer': '플랫포머', 'Metroidvania': '플랫포머', 'Parkour': '플랫포머',
+  'Racing': '레이싱', 'Driving': '레이싱', 'Arcade Racing': '레이싱',
+  'Sports': '스포츠', 'Football (Soccer)': '스포츠', 'Golf': '스포츠', 'Basketball': '스포츠', 'Baseball': '스포츠', 'Skateboarding': '스포츠',
+  'Rhythm': '리듬', 'Music': '리듬',
+  'Fighting': '격투', "Beat 'em up": '격투', '2D Fighter': '격투', '3D Fighter': '격투',
+  'Sandbox': '샌드박스',
+  'Party Game': '파티', 'Party': '파티',
+  'Detective': '추리', 'Mystery': '추리', 'Investigation': '추리', 'Crime': '추리',
+  'Visual Novel': '비주얼노벨', 'Dating Sim': '비주얼노벨',
+  'Card Game': '카드', 'Deckbuilding': '카드', 'Card Battler': '카드',
+  'Idler': '방치형', 'Clicker': '방치형',
+  'Open World': '오픈월드',
+  'Cozy': '힐링', 'Relaxing': '힐링', 'Wholesome': '힐링',
+  'Turn-Based': '턴제', 'Turn-Based Strategy': '턴제', 'Turn-Based Combat': '턴제', 'Turn-Based Tactics': '턴제',
 };
+// 거의 모든 게임에 붙는 넓은 태그. 구체적인 장르가 부족할 때만 사용
+const BROAD_TAGS = new Set(['Action', 'Adventure', 'Action-Adventure', 'Simulation']);
+
+// 태그는 투표 많은 순. 구체적인 태그의 장르를 먼저 최대 3개, 2개가 안 되면 넓은 태그로 채움
+function tagGenres(tags: string[]) {
+  const top = tags.slice(0, 15);
+  const specific = [...new Set(top.filter(t => !BROAD_TAGS.has(t)).map(t => TAG_GENRE[t]).filter(Boolean))].slice(0, 3);
+  const broad = [...new Set(top.filter(t => BROAD_TAGS.has(t)).map(t => TAG_GENRE[t]))].filter(x => !specific.includes(x));
+  return [...specific, ...broad].slice(0, Math.max(2, specific.length));
+}
+
+async function steamTags(appId: string): Promise<string[]> {
+  try {
+    const html = await (await fetch(`https://store.steampowered.com/app/${appId}/?l=english`, {
+      headers: { ...UA, Cookie: 'birthtime=0; lastagecheckage=1-0-1990; wants_mature_content=1' },
+    })).text();
+    const m = html.match(/InitAppTagModal\(\s*\d+,\s*(\[[\s\S]*?\])\s*,/);
+    return m ? JSON.parse(m[1]).map((t: any) => t.name) : [];
+  } catch { return []; }
+}
 const steamId = (s: string) => s.match(/(?:steampowered\.com\/app\/|\/apps\/)(\d+)/)?.[1] ?? null;
 
 async function steamSearch(name: string) {
@@ -104,6 +148,7 @@ async function steamDetails(appId: string, withReview = true) {
       const desc = r.query_summary?.review_score_desc;
       if (desc) review = REVIEW_MAP[desc] ?? desc;
     } catch { /* 평가 없이 진행 */ }
+    const tags = await steamTags(appId);
     const movies = g.movies ?? [];
     const movie = movies.find((m: any) => m.highlight) ?? movies[0];
     return {
@@ -116,6 +161,7 @@ async function steamDetails(appId: string, withReview = true) {
       review,
       url: `https://store.steampowered.com/app/${appId}/`,
       genres: (g.genres ?? []).map((x: any) => x.description).join(', '),
+      tags,
       desc: htmlToText(g.short_description ?? ''),
     };
   } catch { return null; }
@@ -145,6 +191,7 @@ const AI_SCHEMA = {
 const SYSTEM = `너는 스트리머 시청자들이 추천한 게임 목록을 정리하는 도우미야.
 카페 추천글과 Steam 정보를 보고 게임 정보를 JSON으로 정리해.
 - summary는 어떤 게임인지 바로 알 수 있게 장르와 핵심 재미를 담은 한 문장으로 써. 추천글 말투를 따라하지 말고 담백하게.
+- genres는 Steam 사용자 태그가 있으면 그것을 가장 많이 참고해서, 게임의 핵심 장르를 구체적인 것부터 골라. 액션/어드벤처는 더 맞는 장르가 없을 때만 넣어.
 - 정보가 글에 없고 확실하지 않으면 지어내지 말고 "-"로 둬.`;
 
 type AiInfo = { game_name: string; release_date: string; price: string; korean: string; playtime: string; genres: string[]; summary: string };
@@ -178,14 +225,13 @@ function aiRow(link: string, ai: AiInfo | null, steam: Steam) {
   const base = { link, updated_at: new Date().toISOString() };
   if (ai) return { ...base, genres: ai.genres, summary: ai.summary, source: 'ai' };
   if (steam) {
-    const genres = [...new Set(steam.genres.split(', ').map((x: string) => STEAM_GENRE[x]).filter(Boolean))].slice(0, 3);
-    return { ...base, genres, summary: steam.desc, source: 'steam' };
+    return { ...base, genres: tagGenres(steam.tags), summary: steam.desc, source: 'tags' };
   }
   return { ...base, genres: [], summary: '', source: 'none' };
 }
 
 function steamBlock(s: Steam) {
-  return s ? `\n\n[Steam 정보]\n장르: ${s.genres}\n소개: ${s.desc}\n출시일: ${s.release}\n가격: ${s.price}\n한국어: ${s.korean}` : '';
+  return s ? `\n\n[Steam 정보]\n장르: ${s.genres}\n사용자 태그(많이 붙은 순): ${s.tags.slice(0, 15).join(', ')}\n소개: ${s.desc}\n출시일: ${s.release}\n가격: ${s.price}\n한국어: ${s.korean}` : '';
 }
 
 // --- 새 글 분석 ---
@@ -263,7 +309,9 @@ Deno.serve(async (req) => {
     const cachedLinks = new Set((cached as any[]).map(r => r.link));
     const rowLinks = new Set((aiDone as any[]).map(r => r.link));
     // 키가 있으면 AI로 쓴 것만 완료로 봄 (Steam으로 임시로 채운 건 AI로 다시 작성)
-    const aiLinks = new Set((aiDone as any[]).filter(r => !claude || r.source === 'ai').map(r => r.link));
+    // (키가 없으면 태그 기반·정보 없음도 완료. 예전 방식(steam, 공식 장르)으로 채운 건 태그로 다시 채움)
+    const done = (src: string) => src === 'ai' || (!claude && (src === 'tags' || src === 'none'));
+    const aiLinks = new Set((aiDone as any[]).filter(r => done(r.source)).map(r => r.link));
 
     // games.json에 이미 반영된 임시 글은 정리
     const stale = [...cachedLinks].filter(l => knownLinks.has(l));
