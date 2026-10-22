@@ -49,7 +49,7 @@
         .trailer-preview .trailer-label { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.65); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
         #liveStatus { font-size: 0.85rem; min-height: 1.2em; }
         .genre-badge { display: inline-block; background: #2c2c2c; color: #ff9b9b; font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 10px; margin: 3px 3px 0 0; }
-        .game-summary { font-size: 0.78rem; color: #666; font-weight: 400; margin-top: 3px; line-height: 1.35; }
+        .game-summary { font-size: 0.78rem; color: #666; font-weight: 400; margin-top: 3px; line-height: 1.35; max-width: 340px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .new-badge { background: #ff4d4d; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 5px; vertical-align: middle; }
     </style>
 </head>
@@ -226,7 +226,7 @@
                     : '<img src="logo.ico" alt="N/A" class="steam-thumbnail" style="opacity: 0.2; width: 40px;">'}</div></td>
                 <td><select class="form-select form-select-custom" data-link="${esc(g['게시글링크'])}" onchange="changeCategory(this)">${options}</select></td>
                 <td>${g._live ? '<span class="new-badge">NEW</span>' : ''}<a href="${esc(safeUrl(g['게시글링크']))}" target="_blank" rel="noopener noreferrer" class="game-title">${esc(g['글제목'])}</a></td>
-                <td class="fw-bold game-info"><span class="game-name">${esc(g['게임이름'])}</span>${ai.summary ? `<div class="game-summary">${esc(ai.summary)}</div>` : ''}${genres.map(x => `<span class="genre-badge">${esc(x)}</span>`).join('')}</td>
+                <td class="fw-bold game-info"><span class="game-name">${esc(g['게임이름'])}</span>${ai.summary ? `<div class="game-summary" title="${esc(ai.summary)}">${esc(ai.summary)}</div>` : ''}${genres.map(x => `<span class="genre-badge">${esc(x)}</span>`).join('')}</td>
                 <td class="text-center">${review}</td>
                 <td class="fw-bold">${esc(g['가격'])}${discount}</td>
                 <td>${esc(g['한글화'])}</td>
@@ -415,7 +415,7 @@
                     renderAll();
                 }
                 const parts = [fresh.length ? `✨ 카페 새 글 ${fresh.length}개 추가됨` : '✅ 카페 최신 글까지 반영됨'];
-                if (data.ai_remaining > 0) parts.push(`🤖 AI 설명 남은 게임 ${data.ai_remaining}개 (새로고침할 때마다 이어서 채워져요)`);
+                if (data.ai_remaining > 0) parts.push(`🤖 장르·설명 채우는 중 (남은 ${data.ai_remaining}개 · 새로고침할 때마다 이어서 채워져요)`);
                 setLiveStatus(parts.join(' · '));
             } catch (err) {
                 console.error(err);

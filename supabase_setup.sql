@@ -29,8 +29,10 @@ create table if not exists public.game_ai (
     link text primary key,          -- 게시글링크
     genres text[] not null default '{}',
     summary text not null default '',
+    source text not null default 'ai',  -- ai: Claude 작성 / steam: Steam 장르·소개문 / none: 정보 없음
     updated_at timestamptz not null default now()
 );
+alter table public.game_ai add column if not exists source text not null default 'ai';
 
 alter table public.live_games enable row level security;
 alter table public.game_ai enable row level security;
