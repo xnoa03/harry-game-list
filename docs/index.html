@@ -57,7 +57,21 @@
         .trailer-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
         .trailer-preview .trailer-label { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.65); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
         #liveStatus { font-size: 0.85rem; min-height: 1.2em; }
-        .genre-badge { display: inline-block; background: #2c2c2c; color: #ff9b9b; font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 10px; margin: 3px 3px 0 0; }
+        .genre-badge { display: inline-block; background: #2c2c2c; color: #fff; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin: 4px 4px 0 0; }
+        .gp-badge { display: inline-block; background: #107c10; color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin: 4px 4px 0 0; }
+        .filter-label { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .filter-label .hint { font-weight: 500; font-size: 0.75rem; color: #6b3b3b; }
+        .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .chip { border: 2px solid #2c2c2c; background: #fff; color: #2c2c2c; border-radius: 999px; padding: 5px 13px; font-size: 0.9rem; font-weight: 600; line-height: 1.2; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: transform 0.1s, background-color 0.15s; }
+        .chip:hover { transform: translateY(-1px); }
+        .chip .chip-icon { font-size: 1.15rem; line-height: 1; }
+        .chip .chip-count { font-size: 0.72rem; color: #888; font-weight: 600; }
+        .chip.active { background: #2c2c2c; color: #fff; }
+        .chip.active .chip-count { color: #ff9b9b; }
+        .chip.chip-gp { border-color: #107c10; color: #107c10; }
+        .chip.chip-gp.active { background: #107c10; color: #fff; }
+        .chip.chip-gp.active .chip-count { color: #c8f5c8; }
+        .chip.chip-clear { border-style: dashed; color: #555; }
         .game-summary { font-size: 0.8rem; color: #555; font-weight: 400; margin: 4px 0 2px; line-height: 1.5; word-break: keep-all; }
         .new-badge { background: #ff4d4d; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 5px; vertical-align: middle; }
     </style>
@@ -72,23 +86,23 @@
         </div>
         <div class="card mb-4 p-4">
             <div class="row g-3 align-items-end mb-3">
-                <div class="col-md-6">
+                <div class="col-md-9">
                     <label class="form-label fw-bold">🔍 단어 검색</label>
                     <input type="text" id="searchInput" class="form-control bg-light border-secondary" placeholder="제목/게임명/설명 검색..." oninput="applyFilters()">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-bold">🎮 장르</label>
-                    <select id="genreSelect" class="form-select bg-light border-secondary" onchange="applyFilters()"><option value="">전체</option></select>
                 </div>
                 <div class="col-md-3 text-end">
                     <button onclick="randomPick()" class="btn btn-outline-warning fw-bold">🐚 소라고동</button>
                 </div>
                 <div id="liveStatus" class="col-12 text-end fw-bold"></div>
             </div>
+            <div class="mb-1">
+                <div class="filter-label">🎮 장르 <span class="hint">여러 개 고르면 하나라도 해당하는 게임이 보여요</span></div>
+                <div id="genreChips" class="chip-row"></div>
+            </div>
             <hr class="border-secondary my-3">
             <div class="row g-3">
                 <div class="col-md-8">
-                    <label class="form-label fw-bold">장르 필터</label>
+                    <label class="form-label fw-bold">🏷️ 카테고리</label>
                     <div id="tagFilters">
                         <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" value="게임" checked onchange="applyFilters()"><label class="form-check-label fw-bold">게임</label></div>
                         <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" value="공겜" checked onchange="applyFilters()"><label class="form-check-label fw-bold text-danger">공겜</label></div>
@@ -135,6 +149,13 @@
         const CATEGORIES = ['게임', '공겜', '할 게임', '일단 킵', '협동', '한 게임'];
         const GENRES = ['액션', '어드벤처', 'RPG', '로그라이크', '전략', '시뮬레이션', '퍼즐', '공포', '생존', '슈팅',
             '플랫포머', '레이싱', '스포츠', '리듬', '격투', '샌드박스', '파티', '추리', '비주얼노벨', '카드', '방치형', '오픈월드', '힐링', '턴제'];
+        const GENRE_ICON = {
+            '액션': '⚔️', '어드벤처': '🧭', 'RPG': '🐉', '로그라이크': '🎲', '전략': '♟️', '시뮬레이션': '🏗️', '퍼즐': '🧩', '공포': '👻',
+            '생존': '🏕️', '슈팅': '🔫', '플랫포머': '🍄', '레이싱': '🏎️', '스포츠': '⚽', '리듬': '🎵', '격투': '🥊', '샌드박스': '🧱',
+            '파티': '🎉', '추리': '🕵️', '비주얼노벨': '📖', '카드': '🃏', '방치형': '⏳', '오픈월드': '🗺️', '힐링': '🌿', '턴제': '⏱️'
+        };
+        const selectedGenres = new Set();
+        let gamepassOnly = false;
         const LOCAL_KEY = 'harry_categories';
         if (window.SUPABASE_URL) window.SUPABASE_URL = window.SUPABASE_URL.replace(/\/+$/, '').replace(/\/rest\/v1$/, '');
         const useSupabase = !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY);
@@ -240,13 +261,14 @@
             const discount = g['스팀할인'] > 0 ? `<span class="discount-badge">-${esc(g['스팀할인'])}%</span>` : '';
             const trailer = safeUrl(g['트레일러']);
             const options = CATEGORIES.map(c => `<option value="${c}"${c === category ? ' selected' : ''}>${c}</option>`).join('');
-            return `<tr class="game-row" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}" data-genres="${esc(genres.join(','))}">
+            const gp = g['게임패스'] && g['게임패스'] !== '-' ? g['게임패스'] : '';
+            return `<tr class="game-row" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}" data-genres="${esc(genres.join(','))}" data-gp="${gp ? 1 : ''}">
                 <td><div class="steam-img-container${trailer ? ' has-trailer' : ''}"${trailer ? ` data-trailer="${esc(trailer)}" data-poster="${esc(img)}"` : ''}>${img
                     ? `<img src="${esc(img)}" alt="포스터" class="steam-thumbnail" loading="lazy">`
                     : '<img src="logo.ico" alt="N/A" class="steam-thumbnail" style="opacity: 0.2; width: 40px;">'}</div></td>
                 <td><select class="form-select form-select-custom" data-link="${esc(g['게시글링크'])}" onchange="changeCategory(this)">${options}</select></td>
                 <td class="col-title">${g._live ? '<span class="new-badge">NEW</span>' : ''}<a href="${esc(safeUrl(g['게시글링크']))}" target="_blank" rel="noopener noreferrer" class="game-title">${esc(g['글제목'])}</a></td>
-                <td class="fw-bold game-info"><span class="game-name">${esc(g['게임이름'])}</span>${ai.summary ? `<div class="game-summary">${esc(ai.summary)}</div>` : ''}${genres.map(x => `<span class="genre-badge">${esc(x)}</span>`).join('')}</td>
+                <td class="fw-bold game-info"><span class="game-name">${esc(g['게임이름'])}</span>${ai.summary ? `<div class="game-summary">${esc(ai.summary)}</div>` : ''}<div>${gp ? `<span class="gp-badge" title="Xbox 게임패스에 포함 (${esc(gp)})">🟩 게임패스 ${esc(gp)}</span>` : ''}${genres.map(x => `<span class="genre-badge">${GENRE_ICON[x] || ''} ${esc(x)}</span>`).join('')}</div></td>
                 <td class="text-center">${review}</td>
                 <td class="fw-bold price-cell">${short(g['가격'])}${discount}</td>
                 <td class="meta-cell"><div><span class="meta-label">한글</span>${short(g['한글화'], 12)}</div><div><span class="meta-label">플타</span>${short(g['플레이타임'], 14)}</div></td>
@@ -267,10 +289,7 @@
                 .map(g => renderRow(g, normalizeCategory(overrides[g['게시글링크']] || g['카테고리'])))
                 .join('');
             document.querySelectorAll('.form-select-custom').forEach(updateSelectColor);
-            const used = new Set(Object.values(aiInfo).flatMap(a => a.genres || []));
-            const sel = document.getElementById('genreSelect');
-            const cur = sel.value;
-            sel.innerHTML = '<option value="">전체</option>' + GENRES.filter(x => used.has(x)).map(x => `<option${x === cur ? ' selected' : ''}>${x}</option>`).join('');
+            renderChips();
             applyFilters();
         }
 
@@ -305,15 +324,31 @@
             else if (val === '한 게임') selectElement.classList.add('select-finished');
         }
 
+        function renderChips() {
+            const counts = {};
+            games.forEach(g => (aiInfo[g['게시글링크']]?.genres || []).forEach(x => counts[x] = (counts[x] || 0) + 1));
+            const gpCount = games.filter(g => g['게임패스'] && g['게임패스'] !== '-').length;
+            const chip = (cls, active, onclick, icon, label, count) =>
+                `<button type="button" class="chip ${cls}${active ? ' active' : ''}" onclick="${onclick}"><span class="chip-icon">${icon}</span>${label}${count != null ? `<span class="chip-count">${count}</span>` : ''}</button>`;
+            document.getElementById('genreChips').innerHTML =
+                chip('chip-gp', gamepassOnly, 'toggleGamepass()', '🟩', 'Xbox 게임패스', gpCount) +
+                GENRES.filter(x => counts[x]).map(x => chip('', selectedGenres.has(x), `toggleGenre('${x}')`, GENRE_ICON[x], x, counts[x])).join('') +
+                (selectedGenres.size || gamepassOnly ? chip('chip-clear', false, 'clearGenres()', '✖', '초기화') : '');
+        }
+        function toggleGenre(x) { selectedGenres.has(x) ? selectedGenres.delete(x) : selectedGenres.add(x); renderChips(); applyFilters(); }
+        function toggleGamepass() { gamepassOnly = !gamepassOnly; renderChips(); applyFilters(); }
+        function clearGenres() { selectedGenres.clear(); gamepassOnly = false; renderChips(); applyFilters(); }
+
         function applyFilters() {
             const timeLimit = parseFloat(document.getElementById('timeRange').value);
             const checkedTags = Array.from(document.querySelectorAll('#tagFilters input:checked')).map(cb => cb.value);
             const searchText = document.getElementById('searchInput').value.toLowerCase().trim();
-            const genre = document.getElementById('genreSelect').value;
+
             document.querySelectorAll('.game-row').forEach(row => {
                 let show = checkedTags.includes(row.getAttribute('data-tag'));
                 if (parseFloat(row.getAttribute('data-time')) > timeLimit) show = false;
-                if (genre && !row.dataset.genres.split(',').includes(genre)) show = false;
+                if (selectedGenres.size && !row.dataset.genres.split(',').some(x => selectedGenres.has(x))) show = false;
+                if (gamepassOnly && !row.dataset.gp) show = false;
                 if (show && searchText) {
                     const title = row.querySelector('.game-title').innerText.toLowerCase();
                     const gName = row.querySelector('.game-info').innerText.toLowerCase();

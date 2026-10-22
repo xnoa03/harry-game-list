@@ -83,6 +83,48 @@ def fill_trailers(limit):
     print(f"🎬 트레일러 {done}개 수집 (남은 {len(todo) - done}개)")
 
 
+# --- Xbox 게임패스 ---
+GAMEPASS_LISTS = {'PC': 'fdd9e2a7-0fee-49f6-ad69-4354098401ff', '콘솔': 'f6f1f99f-9b49-4ccd-b3bf-4d9767a77f5e'}
+EDITION_WORDS = r'(standard|deluxe|gold|ultimate|complete|definitive|goty|game of the year|edition|windows|pc|xbox series x\|s|xbox one|xbox|game preview|for windows 10|remastered)'
+
+
+def norm_title(t):
+    t = str(t).lower()
+    t = re.sub(r'[®™©’‘\'"]', '', t)
+    t = re.sub(r'\(.*?\)|\[.*?\]', ' ', t)
+    t = re.sub(r'\b' + EDITION_WORDS + r'\b', ' ', t)
+    return re.sub(r'[^0-9a-z가-힣]', '', t)
+
+
+def fetch_gamepass():
+    """{정규화된 제목: {'PC', '콘솔'}}"""
+    ids = {}
+    for kind, sigl in GAMEPASS_LISTS.items():
+        items = requests.get(f'https://catalog.gamepass.com/sigls/v2?id={sigl}&language=ko-kr&market=KR', timeout=20).json()
+        for x in items[1:]: ids.setdefault(x['id'], set()).add(kind)
+    titles = {}
+    id_list = list(ids)
+    for i in range(0, len(id_list), 100):
+        chunk = ','.join(id_list[i:i + 100])
+        for lang in ('en-us', 'ko-kr'):
+            res = requests.get(f'https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds={chunk}&market=KR&languages={lang}', timeout=20).json()
+            for prod in res.get('Products', []):
+                for lp in prod.get('LocalizedProperties', []):
+                    key = norm_title(lp.get('ProductTitle', ''))
+                    if len(key) >= 2: titles.setdefault(key, set()).update(ids[prod['ProductId']])
+    return titles
+
+
+def gamepass_of(row, titles):
+    names = [row.get('게임이름', '')]
+    slug = re.search(r'steampowered\.com/app/\d+/([^/?#]+)', str(row.get('링크', '')))
+    if slug: names.append(slug.group(1).replace('_', ' '))
+    for n in names:
+        kinds = titles.get(norm_title(n))
+        if kinds and len(norm_title(n)) >= 3: return '·'.join(k for k in ('PC', '콘솔') if k in kinds)
+    return '-'
+
+
 def build():
     try: df = pd.read_csv(CSV_FILE, encoding='utf-8-sig').fillna('-')
     except UnicodeDecodeError: df = pd.read_csv(CSV_FILE, encoding='cp949').fillna('-')
@@ -91,6 +133,13 @@ def build():
     if '스팀할인' not in df.columns: df['스팀할인'] = 0
     if '유저평가' not in df.columns: df['유저평가'] = '-'
     if '트레일러' not in df.columns: df['트레일러'] = '-'
+    try:
+        titles = fetch_gamepass()
+        df['게임패스'] = df.apply(lambda r: gamepass_of(r, titles), axis=1)
+        print(f"🎮 게임패스 {(df['게임패스'] != '-').sum()}개 확인")
+    except Exception as e:
+        print(f"게임패스 확인 실패: {e}")
+        df['게임패스'] = '-'
     df['time_num'] = df['플레이타임'].apply(parse_time)
     df['스팀할인'] = pd.to_numeric(df['스팀할인'], errors='coerce').fillna(0).astype(int)
 
