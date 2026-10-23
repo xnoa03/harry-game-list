@@ -1,6 +1,7 @@
 // 사이트를 열 때(F5) 호출되는 함수.
 // 1) 카페 게시판 첫 페이지를 바로 긁어서 games.json에 아직 없는 새 글을 분석해 live_games 테이블에 저장
 // 2) 장르/한 줄 설명이 없는 게임을 채워 game_ai 테이블에 저장 (한 번에 일부씩)
+// 3) { recommend: "원하는 느낌" } 으로 부르면 목록에서 AI가 게임을 골라 추천
 //    ANTHROPIC_API_KEY가 있으면 Claude Haiku로 작성, 없거나 실패하면 Steam의 장르/소개문을 대신 사용(무료)
 //    나중에 키를 추가하면 Steam으로 채운 것도 AI로 다시 작성함
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 는 Supabase가 자동으로 넣어줌
@@ -301,11 +302,96 @@ async function inBatches<T, R>(items: T[], size: number, fn: (x: T) => Promise<R
   return out;
 }
 
+// --- AI 추천 ---
+const REC_SCHEMA = {
+  type: 'object',
+  properties: {
+    comment: { type: 'string', description: '요청에 대한 짧은 한마디 (한국어 한 문장)' },
+    picks: {
+      type: 'array',
+      description: '추천 게임 3~5개, 잘 맞는 순서대로',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '목록의 id 그대로' },
+          reason: { type: 'string', description: '요청과 어떻게 맞는지 한국어 한두 문장' },
+        },
+        required: ['id', 'reason'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['comment', 'picks'],
+  additionalProperties: false,
+};
+
+const REC_SYSTEM = `너는 스트리머 해리의 게임 추천 도우미야. 시청자들이 카페에 추천한 게임 목록이 아래에 있어.
+사용자가 원하는 느낌을 말하면 이 목록 안에서만 가장 잘 맞는 게임을 3~5개 골라.
+- 목록에 없는 게임은 절대 추천하지 마. id는 목록에 적힌 그대로 써.
+- 인원(혼자/협동), 분위기, 플레이타임, 가격, 장르 같은 조건을 꼼꼼히 맞춰. 조건에 딱 맞는 게 적으면 가장 가까운 걸 고르고 이유에 솔직하게 적어.
+- 목록의 '카테고리'가 협동/공겜이면 여럿이 하기 좋은 게임이야.
+- 이유는 시청자에게 말하듯 친근하지만 짧게.
+
+[게임 목록] (id | 이름 | 카테고리 | 장르 | 설명 | 플레이타임 | 가격 | 평가 | 게임패스)
+`;
+
+async function recommend(query: string, known: Record<string, string>[]) {
+  if (!claude) return json({ status: 'error', msg: 'AI 키가 설정되지 않았습니다' }, 503);
+  const [aiRows, catRows, liveRows] = await Promise.all([
+    sbAll('game_ai?select=link,genres,summary'),
+    sbAll('categories?select=link,category'),
+    sbAll('live_games?select=data'),
+  ]);
+  const ai = new Map(aiRows.map((r: any) => [r.link, r]));
+  const cat = new Map(catRows.map((r: any) => [r.link, r.category]));
+  const all = [...liveRows.map((r: any) => r.data), ...known];
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const g of all) {
+    const link = g['게시글링크'];
+    const id = link.match(/articleid=(\d+)/)?.[1];
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const category = String(cat.get(link) ?? g['카테고리']);
+    if (category.replace(/\s/g, '').includes('한게임')) continue;  // 이미 한 게임은 제외
+    const a: any = ai.get(link) ?? {};
+    const v = (x: unknown) => (x && x !== '-' ? String(x).slice(0, 40) : '');
+    lines.push([id, g['게임이름'], category, (a.genres ?? []).join('/'), a.summary ?? '', v(g['플레이타임']), v(g['가격']), v(g['유저평가']), v(g['게임패스'])].join(' | '));
+  }
+  // 목록 순서를 고정해(글 번호 순) 같은 목록이면 프롬프트 캐시가 재사용되게 함
+  lines.sort((x, y) => Number(y.split(' | ')[0]) - Number(x.split(' | ')[0]));
+
+  const res: any = await claude.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    output_config: { format: { type: 'json_schema', schema: REC_SCHEMA } },
+    system: [{ type: 'text', text: REC_SYSTEM + lines.join('\n'), cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: query }],
+  } as any);
+  if (res.stop_reason === 'refusal') return json({ status: 'error', msg: '이 요청은 추천해 드리기 어려워요' }, 400);
+  const out = JSON.parse(res.content.find((b: any) => b.type === 'text')?.text ?? '{}');
+  // 목록에 없는 id는 버림
+  const picks = (out.picks ?? []).filter((p: any) => seen.has(String(p.id))).slice(0, 5);
+  return json({ status: 'ok', comment: out.comment ?? '', picks });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ status: 'error', msg: 'POST only' }, 405);
   const opts = await req.json().catch(() => ({}));
   const backfillLimit = Math.min(Number(opts.backfill ?? BACKFILL_PER_CALL) || 0, 60);
+
+  if (typeof opts.recommend === 'string') {
+    const query = opts.recommend.trim().slice(0, 200);  // 비용 보호: 요청 길이 제한
+    if (!query) return json({ status: 'error', msg: '원하는 느낌을 적어 주세요' }, 400);
+    try {
+      const known = await (await fetch(GAMES_JSON, { cache: 'no-store' })).json();
+      return await recommend(query, known);
+    } catch (e) {
+      console.error('추천 에러', e);
+      return json({ status: 'error', msg: '추천 중 오류가 났어요. 잠시 뒤 다시 시도해 주세요' }, 500);
+    }
+  }
 
   try {
     const [posts, known, cached, aiDone] = await Promise.all([

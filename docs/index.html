@@ -77,6 +77,22 @@
         .chip.chip-gp.active { background: #107c10; color: #fff; }
         .chip.chip-gp.active .chip-count { color: #c8f5c8; }
         .chip.chip-clear { border-style: dashed; color: #555; }
+        .ai-rec { background: #2c2c2c; border-radius: 12px; padding: 16px; color: #fff; }
+        .ai-rec .filter-label .hint { color: #ffb3b3; }
+        .ai-rec .form-control { border: none; }
+        .ai-rec .btn-rec { background: #ff4d4d; color: #fff; font-weight: 700; border: none; white-space: nowrap; }
+        .ai-rec .btn-rec:hover { background: #e60000; color: #fff; }
+        .rec-comment { margin: 12px 0 8px; font-weight: 600; color: #ffd0d0; }
+        .rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+        .rec-card { background: #fff; color: #2c2c2c; border-radius: 10px; overflow: hidden; cursor: pointer; transition: transform 0.12s, box-shadow 0.12s; display: flex; flex-direction: column; }
+        .rec-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
+        .rec-card img { width: 100%; aspect-ratio: 460 / 215; object-fit: cover; background: #1a1a1a; }
+        .rec-card .rec-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+        .rec-card .rec-name { font-weight: 800; font-size: 0.98rem; }
+        .rec-card .rec-reason { font-size: 0.82rem; color: #444; line-height: 1.45; flex: 1; }
+        .rec-card .rec-go { font-size: 0.75rem; font-weight: 700; color: #ff4d4d; }
+        .game-row.rec-highlight td { animation: recFlash 2.4s ease-out; }
+        @keyframes recFlash { 0%, 40% { background-color: #ffe08a; } 100% { background-color: transparent; } }
         .game-summary { font-size: 0.8rem; color: #555; font-weight: 400; margin: 4px 0 2px; line-height: 1.5; word-break: keep-all; }
         .new-badge { background: #ff4d4d; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 5px; vertical-align: middle; }
     </style>
@@ -99,6 +115,14 @@
                     <button onclick="randomPick()" class="btn btn-outline-warning fw-bold">🐚 소라고동</button>
                 </div>
                 <div id="liveStatus" class="col-12 text-end fw-bold"></div>
+            </div>
+            <div class="ai-rec mb-3">
+                <div class="filter-label">🤖 AI 추천 <span class="hint">원하는 느낌을 말하면 목록 안에서 골라줘요 (이미 한 게임은 빼고)</span></div>
+                <div class="input-group">
+                    <input id="recInput" type="text" class="form-control" maxlength="200" placeholder="예: 친구 3명이랑 2시간 안에 끝나는 무서운 게임" onkeydown="if (event.key === 'Enter' && !event.isComposing) askRecommend()">
+                    <button id="recBtn" class="btn btn-rec" onclick="askRecommend()">추천받기</button>
+                </div>
+                <div id="recResult"></div>
             </div>
             <div class="mb-1">
                 <div class="filter-label">🎮 장르 <span class="hint">여러 개 고르면 하나라도 해당하는 게임이 보여요</span></div>
@@ -132,7 +156,7 @@
                         <th style="width: 130px;">포스터</th>
                         <th style="width: 140px;">카테고리</th>
                         <th>제목</th>
-                        <th>게임명 · 설명</th>
+                        <th>게임명 · AI설명</th>
                         <th>평가</th>
                         <th>가격/할인</th>
                         <th class="text-center">게임패스</th>
@@ -269,7 +293,7 @@
             const trailer = safeUrl(g['트레일러']);
             const options = CATEGORIES.map(c => `<option value="${c}"${c === category ? ' selected' : ''}>${c}</option>`).join('');
             const gp = g['게임패스'] && g['게임패스'] !== '-' ? g['게임패스'] : '';
-            return `<tr class="game-row" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}" data-genres="${esc(genres.join(','))}" data-gp="${gp ? 1 : ''}" data-search="${esc([g['글제목'], g['게임이름'], ai.summary, ...genres].join(' ').toLowerCase())}">
+            return `<tr class="game-row" data-id="${articleId(g)}" data-tag="${esc(category)}" data-time="${Number(g.time_num) || 0}" data-genres="${esc(genres.join(','))}" data-gp="${gp ? 1 : ''}" data-search="${esc([g['글제목'], g['게임이름'], ai.summary, ...genres].join(' ').toLowerCase())}">
                 <td><div class="steam-img-container${trailer ? ' has-trailer' : ''}"${trailer ? ` data-trailer="${esc(trailer)}" data-poster="${esc(img)}"` : ''}>${img
                     ? `<img src="${esc(img)}" alt="포스터" class="steam-thumbnail" loading="lazy">`
                     : '<img src="logo.ico" alt="N/A" class="steam-thumbnail" style="opacity: 0.2; width: 40px;">'}</div></td>
@@ -458,6 +482,59 @@
         }
 
         // --- 접속(F5)할 때마다 카페 최신 글 + AI 정보 가져오기 (Supabase Edge Function) ---
+        // --- AI 추천 ---
+        async function askRecommend() {
+            const input = document.getElementById('recInput');
+            const btn = document.getElementById('recBtn');
+            const box = document.getElementById('recResult');
+            const query = input.value.trim();
+            if (!query) return input.focus();
+            if (!useSupabase) return box.innerHTML = '<div class="rec-comment">Supabase 설정이 필요해요.</div>';
+            btn.disabled = true;
+            box.innerHTML = '<div class="rec-comment">🤔 820개 목록에서 고르는 중... (5~15초)</div>';
+            try {
+                const res = await fetch(`${window.SUPABASE_URL}/functions/v1/live-games`, {
+                    method: 'POST', headers: sbHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ recommend: query })
+                });
+                const data = await res.json().catch(() => ({ status: 'error', msg: `HTTP ${res.status}` }));
+                if (data.status !== 'ok') throw new Error(data.msg);
+                if (!Array.isArray(data.picks)) throw new Error('추천 기능을 준비 중이에요. 잠시 뒤 다시 시도해 주세요');
+                const byId = new Map(games.map(g => [String(articleId(g)), g]));
+                const cards = data.picks.map(p => {
+                    const g = byId.get(String(p.id));
+                    if (!g) return '';
+                    const img = safeUrl(g['스팀이미지']);
+                    const genres = (aiInfo[g['게시글링크']]?.genres || []).map(x => `<span class="genre-badge">${GENRE_ICON[x] || ''} ${esc(x)}</span>`).join('');
+                    return `<div class="rec-card" onclick="goToGame('${esc(p.id)}')">
+                        <img src="${img ? esc(img) : 'logo.ico'}" alt="" loading="lazy"${img ? '' : ' style="object-fit: contain; opacity: 0.3;"'}>
+                        <div class="rec-body"><div class="rec-name">${esc(g['게임이름'])}</div><div>${genres}</div>
+                        <div class="rec-reason">${esc(p.reason)}</div><div class="rec-go">표에서 보기 →</div></div></div>`;
+                }).join('');
+                box.innerHTML = `<div class="rec-comment">${esc(data.comment)}</div>` + (cards ? `<div class="rec-grid">${cards}</div>` : '<div>딱 맞는 게임을 못 찾았어요. 조금 다르게 말해 볼래요?</div>');
+            } catch (err) {
+                console.error(err);
+                box.innerHTML = `<div class="rec-comment">🚨 ${esc(err.message || '추천 실패')}</div>`;
+            }
+            btn.disabled = false;
+        }
+
+        // 추천 카드 클릭: 필터에 가려져 있으면 필터를 풀고 해당 행으로 이동
+        function goToGame(id) {
+            const row = document.querySelector(`.game-row[data-id="${CSS.escape(String(id))}"]`);
+            if (!row) return;
+            if (row.style.display === 'none') {
+                document.getElementById('searchInput').value = '';
+                document.querySelectorAll('#tagFilters input').forEach(cb => { if (cb.value === row.dataset.tag) cb.checked = true; });
+                document.getElementById('timeRange').value = 100;
+                document.getElementById('timeVal').innerText = '100';
+                clearGenres();
+            }
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.remove('rec-highlight');
+            void row.offsetWidth;
+            row.classList.add('rec-highlight');
+        }
+
         function setLiveStatus(msg, cls) {
             const el = document.getElementById('liveStatus');
             el.className = `col-12 text-end fw-bold ${cls || ''}`;
