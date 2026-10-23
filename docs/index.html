@@ -491,7 +491,7 @@
             if (!query) return input.focus();
             if (!useSupabase) return box.innerHTML = '<div class="rec-comment">Supabase 설정이 필요해요.</div>';
             btn.disabled = true;
-            box.innerHTML = '<div class="rec-comment">🤔 820개 목록에서 고르는 중... (5~15초)</div>';
+            box.innerHTML = '<div class="rec-comment">🤔 820개 목록에서 고르는 중... (15~20초 걸려요)</div>';
             try {
                 const res = await fetch(`${window.SUPABASE_URL}/functions/v1/live-games`, {
                     method: 'POST', headers: sbHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ recommend: query })
