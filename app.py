@@ -213,9 +213,12 @@ def process_single_target(item, old_games_map):
         t_clean = re.sub(r'\[.*?\]', ' ', title_raw, count=1)
         t_clean = re.sub(r'\(?\d+(?:\.\d+)?\s*(?:시간|분)\)?', ' ', t_clean)
         m_quote = re.search(r'["\'](.*?)["\']', title_raw) 
-        m_bracket = re.search(r'\[(.*?)\]', title_raw[title_raw.find(']')+1:]) 
+        m_bracket = re.search(r'\[(.*?)\]', title_raw[title_raw.find(']')+1:])
+        # "[공겜][협동공겜] 프로젝트 언노운"처럼 말머리가 더 붙은 경우 괄호 밖 텍스트가 게임명
+        t_outside = re.sub(r'\[.*?\]', ' ', t_clean).strip()
+        if t_outside: t_clean = t_outside
         if m_quote: info["게임이름"] = m_quote.group(1).strip()
-        elif m_bracket: info["게임이름"] = m_bracket.group(1).strip()
+        elif m_bracket and not t_outside: info["게임이름"] = m_bracket.group(1).strip()
         else:
             info["게임이름"] = t_clean.split(":")[-1].strip() if ":" in t_clean else t_clean.strip()
 

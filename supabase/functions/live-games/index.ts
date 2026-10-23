@@ -192,6 +192,7 @@ const SYSTEM = `너는 스트리머 시청자들이 추천한 게임 목록을 �
 카페 추천글과 Steam 정보를 보고 게임 정보를 JSON으로 정리해.
 - summary는 어떤 게임인지 바로 알 수 있게 장르와 핵심 재미를 담은 한 문장으로 써. 추천글 말투를 따라하지 말고 담백하게.
 - genres는 Steam 사용자 태그가 있으면 그것을 가장 많이 참고해서, 게임의 핵심 장르를 구체적인 것부터 골라. 액션/어드벤처는 더 맞는 장르가 없을 때만 넣어.
+- 제목 앞의 [공겜], [협동공겜] 같은 대괄호 말머리는 게임 이름이 아니야.
 - 정보가 글에 없고 확실하지 않으면 지어내지 말고 "-"로 둬.`;
 
 type AiInfo = { game_name: string; release_date: string; price: string; korean: string; playtime: string; genres: string[]; summary: string };
